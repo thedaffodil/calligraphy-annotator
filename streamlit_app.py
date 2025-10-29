@@ -113,10 +113,14 @@ def prev_image():
     st.session_state.index = max(0, st.session_state.index - 1)
 
 # === AUTO-SKIP ALREADY ANNOTATED ===
+# === AUTO-SKIP ALREADY PROCESSED (annotated or deleted) ===
 annotated_ids = {a["id"] for a in st.session_state.annotations}
+deleted_ids = {d["id"] for d in st.session_state.deleted}
+processed_ids = annotated_ids.union(deleted_ids)
+
 while st.session_state.index < len(image_urls):
     current_id = os.path.splitext(os.path.basename(image_urls[st.session_state.index]))[0]
-    if current_id not in annotated_ids:
+    if current_id not in processed_ids:
         break
     st.session_state.index += 1
 
