@@ -114,26 +114,6 @@ with col_form:
         text_latinized = st.text_area("Latinized Version / Latin Yazım", key=f"text_latinized_{idx}", placeholder="Bismillahirrahmanirrahim")
         text_translation_tr = st.text_area("Turkish Translation / Türkçe Çeviri", key=f"text_translation_{idx}", placeholder="Rahmân ve rahîm olan Allah'ın adıyla")
 
-        # --- CALLIGRAPHERS ---
-        original_calligrapher = st.text_input("Original Calligrapher / Asıl Hattat", key=f"orig_artist_{idx}", placeholder="Örnek: Şeyh Hamdullah")
-        rewriter_calligrapher = st.text_input("Rewriter / Tekrar Yazan", key=f"rewriter_{idx}", placeholder="Örnek: Mustafa Cemil Efe")
-
-        # --- LOCATION ---
-        year = st.text_input("Year / Yıl", key=f"year_{idx}", placeholder="Örnek: 1850")
-        location = st.text_input("Location (City, Country) / Konum (Şehir, Ülke)", key=f"location_{idx}", placeholder="Örnek: İstanbul, Türkiye")
-        site = st.text_input("Site / Mekan Adı", key=f"site_{idx}", placeholder="Örnek: Süleymaniye Camii")
-
-        # --- LANGUAGE & STYLE ---
-        language_options = ["", "Arabic / Arapça", "Ottoman / Osmanlıca", "Persian / Farsça", "Other / Diğer"]
-        script_options = ["", "Thuluth / Sülüs", "Naskh / Nesih", "Talik / Talik", "Kufi", "Divani", "Rika", "Other / Diğer"]
-        art_form_options = ["", "Architectural / Mimari", "Framed panel / Levha", "Book / Kitap", "Gravestone / Mezar Taşı", "Ceramic / Çini", "Other / Diğer"]
-        text_source_options = ["", "Quran / Ayet", "Hadith / Hadis", "Poetic / Şiir", "Prayer / Dua", "Name / İsim", "Other / Diğer"]
-
-        language_tag = st.selectbox("Language / Dil", language_options, key=f"lang_{idx}")
-        script_style = st.selectbox("Script Style / Yazı Stili", script_options, key=f"style_{idx}")
-        art_form = st.selectbox("Art Form / Eser Türü", art_form_options, key=f"artform_{idx}")
-        text_source = st.selectbox("Text Source / Metin Kaynağı", text_source_options, key=f"textsource_{idx}")
-
         # --- QURAN DETAILS ---
         st.markdown("#### 📖 Quran Details / Kur'an Bilgileri")
         surah_name = st.text_input("Surah Name / Sûre Adı", key=f"surah_{idx}", placeholder="Örnek: Fatiha")
@@ -155,15 +135,6 @@ if submitted:
         "text_original": text_original,
         "text_latinized": text_latinized,
         "text_translation_tr": text_translation_tr,
-        "original_calligrapher": original_calligrapher,
-        "rewriter_calligrapher": rewriter_calligrapher,
-        "year": year,
-        "location": location,
-        "site": site,
-        "language_tag": language_tag,
-        "script_style": script_style,
-        "art_form": art_form,
-        "text_source": text_source,
         "surah_name": surah_name,
         "ayah_number": ayah_number,
         "comment": comment
