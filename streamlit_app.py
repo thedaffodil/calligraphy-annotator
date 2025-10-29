@@ -54,12 +54,12 @@ def upload_json_direct(data_dict, bucket, folder, filename):
 
         remote_path = f"{folder}/{filename}"
 
-        res = supabase.storage.from_(bucket).upload(
+        supabase.storage.from_(bucket).upload(
             path=remote_path,
             file=tmp_path,
             file_options={
                 "content-type": "application/json",
-                "x-upsert": "true"  # must be string, not bool
+                "x-upsert": "true"
             }
         )
 
@@ -76,21 +76,34 @@ if not folders:
 selected_folder = st.selectbox("📁 Choose dataset folder / Klasör seçiniz", folders)
 st.info(f"Selected folder: {selected_folder}")
 
-# === IMAGE URLS ===
 image_urls = get_image_urls(BUCKET, selected_folder)
 if not image_urls:
     st.warning("⚠️ No images found in this folder.")
     st.stop()
 
-# === STATE ===
-if "index" not in st.session_state:
+# === STATE HANDLING (with folder change detection) ===
+if "selected_folder" not in st.session_state:
+    st.session_state.selected_folder = None
+
+# If the selected folder changes, reload annotation data
+if st.session_state.selected_folder != selected_folder:
+    st.cache_data.clear()  # clear cache to reload from Supabase
+    st.session_state.selected_folder = selected_folder
     st.session_state.index = 0
-
-if "annotations" not in st.session_state:
-    st.session_state.annotations = load_existing_annotations(BUCKET, f"{selected_folder}_annotations", "annotations.json")
-
-if "deleted" not in st.session_state:
-    st.session_state.deleted = load_existing_annotations(BUCKET, f"{selected_folder}_annotations", "deleted.json")
+    st.session_state.annotations = load_existing_annotations(
+        BUCKET, f"{selected_folder}_annotations", "annotations.json"
+    )
+    st.session_state.deleted = load_existing_annotations(
+        BUCKET, f"{selected_folder}_annotations", "deleted.json"
+    )
+else:
+    # Initialize defaults if empty
+    if "annotations" not in st.session_state:
+        st.session_state.annotations = []
+    if "deleted" not in st.session_state:
+        st.session_state.deleted = []
+    if "index" not in st.session_state:
+        st.session_state.index = 0
 
 # === NAVIGATION HELPERS ===
 def next_image():
@@ -140,7 +153,7 @@ with col_form:
         comment = st.text_area("Comment / Yorum veya Not", key=f"comment_{idx}", placeholder="örnek: Yazı mihrap üzerinde yer almakta.")
 
         submitted = st.form_submit_button("💾 Save & Next / Kaydet ve Sonraki", use_container_width=True)
-        skip_btn = st.form_submit_button("⏭ Skip / Atla", use_container_width=True)
+        #skip_btn = st.form_submit_button("⏭ Skip / Atla", use_container_width=True)
         delete_btn = st.form_submit_button("❌ Delete / Uygun Değil", use_container_width=True)
 
 back_btn = st.button("⬅️ Back / Geri", use_container_width=True)
@@ -180,10 +193,10 @@ elif delete_btn:
     next_image()
     st.rerun()
 
-elif skip_btn:
-    next_image()
-    st.info("⏭ Skipped.")
-    st.rerun()
+#elif skip_btn:
+ #   next_image()
+  #  st.info("⏭ Skipped.")
+   # st.rerun()
 
 elif back_btn:
     prev_image()
