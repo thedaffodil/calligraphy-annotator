@@ -213,7 +213,10 @@ with tab_annotate:
     col_img, col_form = st.columns([2, 3])
 
     with col_img:
+    # SHOW IMAGE NAME ABOVE IMAGE
+        st.markdown(f"**📄 Image name:** `{img_name}`")
         st.image(img_url, width=600)
+
 
     with col_form:
         with st.form(key="annotation_form", clear_on_submit=False):
