@@ -3,7 +3,6 @@ from supabase import create_client, Client
 import json
 import os
 import tempfile
-import io
 import datetime
 
 # =========================
@@ -177,9 +176,6 @@ def next_image():
         st.session_state.index + 1, len(image_urls) - 1
     )
 
-def prev_image():
-    st.session_state.index = max(0, st.session_state.index - 1)
-
 # Auto-skip already processed
 annotated_ids = {a["id"] for a in st.session_state.annotations}
 deleted_ids = {d["id"] for d in st.session_state.deleted}
@@ -198,9 +194,11 @@ if st.session_state.index >= len(image_urls):
     st.stop()
 
 # =========================
-# TABS (ANNOTATE / REVIEW)
+# TABS (ANNOTATE / REVIEW / GALLERY)
 # =========================
-tab_annotate, tab_review = st.tabs(["🖊️ Annotate", "📄 Review / Edit JSON"])
+tab_annotate, tab_review, tab_gallery = st.tabs(
+    ["🖊️ Annotate", "📄 Review / Grid Editor", "📚 Gallery"]
+)
 
 # =======================================================================
 # TAB 1 — ANNOTATE
@@ -272,8 +270,6 @@ with tab_annotate:
                 use_container_width=True
             )
 
-    back_btn = st.button("⬅️ Back", use_container_width=True)
-
     # Save / Delete Logic
     if submitted:
         image_id = os.path.splitext(img_name)[0]
@@ -319,13 +315,8 @@ with tab_annotate:
         next_image()
         st.rerun()
 
-    elif back_btn:
-        prev_image()
-        st.rerun()
-
-
 # =======================================================================
-# TAB 2 — REVIEW / EDIT JSON
+# TAB 2 — REVIEW / GRID EDITOR
 # =======================================================================
 with tab_review:
 
@@ -333,7 +324,7 @@ with tab_review:
     ann_filename = "annotations.json"
     del_filename = "deleted.json"
 
-    st.markdown("### 📄 Review & Edit JSON Files")
+    st.markdown("### 📄 Review & Edit (Grid Editor)")
 
     # Reload buttons
     colA, colB = st.columns(2)
@@ -364,7 +355,7 @@ with tab_review:
     st.divider()
 
     # Grid Editor for annotations
-    st.subheader("🧾 Grid editor (annotations.json)")
+    st.subheader("🧾 Annotations grid")
 
     ann_list = normalize_records(st.session_state.annotations)
 
@@ -401,40 +392,19 @@ with tab_review:
         )
         st.success("Saved annotations.json")
 
-    st.divider()
+# =======================================================================
+# TAB 3 — GALLERY (ALL IMAGES + NAMES)
+# =======================================================================
+with tab_gallery:
+    st.markdown("### 📚 Folder Gallery")
+    st.write(f"Total images in **{selected_folder}**: `{len(image_urls)}`")
 
-    # Raw JSON edit
-    st.subheader("✏️ Raw JSON editor")
+    n_cols = 4
+    cols = st.columns(n_cols)
 
-    choice = st.radio("Choose file to edit:", ["annotations.json", "deleted.json"], horizontal=True)
-
-    if choice == "annotations.json":
-        raw_initial = json.dumps(st.session_state.annotations, ensure_ascii=False, indent=2)
-        keyname = "raw_ann"
-    else:
-        raw_initial = json.dumps(st.session_state.deleted, ensure_ascii=False, indent=2)
-        keyname = "raw_del"
-
-    raw_text = st.text_area(
-        "Edit JSON:",
-        value=raw_initial,
-        height=300,
-        key=keyname,
-    )
-
-    if st.button("✅ Validate & Save JSON"):
-        try:
-            obj = json.loads(raw_text)
-            obj = normalize_records(obj)
-
-            if choice == "annotations.json":
-                st.session_state.annotations = obj
-                backup_and_upload_json(obj, BUCKET, ann_folder, ann_filename)
-            else:
-                st.session_state.deleted = obj
-                backup_and_upload_json(obj, BUCKET, ann_folder, del_filename)
-
-            st.success(f"Saved {choice}")
-
-        except json.JSONDecodeError as e:
-            st.error(f"Invalid JSON: {e}")
+    for i, url in enumerate(image_urls):
+        name = os.path.basename(url)
+        col = cols[i % n_cols]
+        with col:
+            st.image(url, use_column_width=True)
+            st.caption(name)
