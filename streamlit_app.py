@@ -189,7 +189,7 @@ edited_df = st.data_editor(
         "image_url": st.column_config.ImageColumn(
             "Image",
             help="Preview of the image",
-            width="small"
+            width="large"
         ),
         "id": st.column_config.Column("ID (from filename)"),
         "text_original": st.column_config.TextColumn("Original Text / Asıl Metin"),
