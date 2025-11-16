@@ -4,6 +4,7 @@ import json
 import os
 import tempfile
 import datetime
+import pandas as pd
 
 # =========================
 # PAGE CONFIG
@@ -26,7 +27,7 @@ def init_connection() -> Client:
 supabase: Client = init_connection()
 BUCKET = st.secrets["SUPABASE_BUCKET"]
 
-st.title("🖋️ Calligraphy Annotation Tool (Online)")
+st.title("🖋️ Calligraphy Annotation Tool (Grid Mode)")
 
 # =========================
 # SUPABASE HELPERS
@@ -63,27 +64,6 @@ def load_existing_annotations(bucket: str, folder: str, filename: str):
         st.warning(f"No existing {filename} found in Supabase.")
     return []
 
-def upload_json_direct(data_obj, bucket: str, folder: str, filename: str):
-    """Overwrite main JSON file using a real temp file path."""
-    try:
-        with tempfile.NamedTemporaryFile("w", delete=False, suffix=".json", encoding="utf-8") as tmp:
-            json.dump(data_obj, tmp, ensure_ascii=False, indent=2)
-            tmp_path = tmp.name
-
-        remote_path = f"{folder}/{filename}"
-
-        supabase.storage.from_(bucket).upload(
-            path=remote_path,
-            file=tmp_path,
-            file_options={
-                "content-type": "application/json",
-                "x-upsert": "true"
-            }
-        )
-        st.success(f"☁️ Uploaded → {remote_path}")
-    except Exception as e:
-        st.error(f"❌ Upload failed: {e}")
-
 def backup_and_upload_json(data_obj, bucket: str, folder: str, filename: str):
     """Create a timestamped backup, then overwrite the main JSON file."""
     try:
@@ -93,6 +73,7 @@ def backup_and_upload_json(data_obj, bucket: str, folder: str, filename: str):
         backup_folder = f"{folder}/_backups"
         backup_remote_path = f"{backup_folder}/{backup_name}"
 
+        # backup temp file
         with tempfile.NamedTemporaryFile("w", delete=False, suffix=".json", encoding="utf-8") as tmp_bk:
             json.dump(data_obj, tmp_bk, ensure_ascii=False, indent=2)
             backup_tmp_path = tmp_bk.name
@@ -150,261 +131,95 @@ if not image_urls:
     st.warning("⚠️ No images found in this folder.")
     st.stop()
 
-# =========================
-# STATE MANAGEMENT
-# =========================
-if "selected_folder" not in st.session_state:
-    st.session_state.selected_folder = None
-
-if st.session_state.selected_folder != selected_folder:
-    st.cache_data.clear()
-    st.session_state.selected_folder = selected_folder
-    st.session_state.index = 0
-    st.session_state.annotations = load_existing_annotations(
-        BUCKET, f"{selected_folder}_annotations", "annotations.json"
-    )
-    st.session_state.deleted = load_existing_annotations(
-        BUCKET, f"{selected_folder}_annotations", "deleted.json"
-    )
-else:
-    st.session_state.setdefault("annotations", [])
-    st.session_state.setdefault("deleted", [])
-    st.session_state.setdefault("index", 0)
-
-def next_image():
-    st.session_state.index = min(
-        st.session_state.index + 1, len(image_urls) - 1
-    )
-
-# Auto-skip already processed
-annotated_ids = {a["id"] for a in st.session_state.annotations}
-deleted_ids = {d["id"] for d in st.session_state.deleted}
-processed_ids = annotated_ids.union(deleted_ids)
-
-while st.session_state.index < len(image_urls):
-    current_id = os.path.splitext(
-        os.path.basename(image_urls[st.session_state.index])
-    )[0]
-    if current_id not in processed_ids:
-        break
-    st.session_state.index += 1
-
-if st.session_state.index >= len(image_urls):
-    st.success("🎉 All images in this folder are processed!")
-    st.stop()
+st.write(f"Toplam görsel sayısı / Total images: **{len(image_urls)}**")
 
 # =========================
-# TABS (ANNOTATE / REVIEW / GALLERY)
+# LOAD EXISTING ANNOTATIONS & BUILD GRID ROWS
 # =========================
-tab_annotate, tab_review, tab_gallery = st.tabs(
-    ["🖊️ Annotate", "📄 Review / Grid Editor", "📚 Gallery"]
+ann_folder = f"{selected_folder}_annotations"
+ann_filename = "annotations.json"
+
+existing = normalize_records(
+    load_existing_annotations(BUCKET, ann_folder, ann_filename)
 )
 
-# =======================================================================
-# TAB 1 — ANNOTATE
-# =======================================================================
-with tab_annotate:
+# map id -> existing annotation
+existing_by_id = {rec.get("id"): rec for rec in existing}
 
-    img_url = image_urls[st.session_state.index]
-    img_name = os.path.basename(img_url)
+# columns we will use in the grid
+ann_cols = [
+    "id",
+    "image_url",
+    "text_original",
+    "text_latinized",
+    "text_translation_tr",
+    "surah_name",
+    "ayah_number",
+    "comment",
+]
 
-    progress_text = (
-        f"Image {st.session_state.index + 1}/{len(image_urls)} "
-        f"| Annotated: {len(st.session_state.annotations)}"
-    )
-    st.subheader(f"🖼️ {progress_text}")
+rows = []
+for url in image_urls:
+    img_name = os.path.basename(url)
+    image_id = os.path.splitext(img_name)[0]
+    base = existing_by_id.get(image_id, {})
 
-    col_img, col_form = st.columns([2, 3])
+    row = {
+        "id": image_id,
+        "image_url": url,
+        "text_original": base.get("text_original", ""),
+        "text_latinized": base.get("text_latinized", ""),
+        "text_translation_tr": base.get("text_translation_tr", ""),
+        "surah_name": base.get("surah_name", ""),
+        "ayah_number": base.get("ayah_number", ""),
+        "comment": base.get("comment", ""),
+    }
+    rows.append(row)
 
-    with col_img:
-        st.markdown(f"**📄 Image name:** `{img_name}`")
-        st.image(img_url, width=600)
+df = pd.DataFrame(rows, columns=ann_cols)
 
-    with col_form:
-        with st.form(key="annotation_form", clear_on_submit=False):
-            idx = st.session_state.index
-            st.markdown("### 📝 Annotation Fields")
+st.markdown("### 🧾 Annotations grid (edit in-place and click Save)")
 
-            # Texts
-            text_original = st.text_area(
-                "Original Text / Asıl Metin",
-                key=f"text_original_{idx}",
-                placeholder="بسم الله الرحمن الرحیم",
-            )
-            text_latinized = st.text_area(
-                "Latinized Version / Latin Yazım",
-                key=f"text_latinized_{idx}",
-                placeholder="Bismillahirrahmanirrahim",
-            )
-            text_translation_tr = st.text_area(
-                "Turkish Translation / Türkçe Çeviri",
-                key=f"text_translation_{idx}",
-                placeholder="Rahmân ve rahîm olan Allah'ın adıyla",
-            )
+edited_df = st.data_editor(
+    df,
+    key="ann_grid",
+    num_rows="fixed",  # no extra rows; one row per image
+    use_container_width=True,
+    column_config={
+        "image_url": st.column_config.ImageColumn(
+            "Image",
+            help="Preview of the image",
+            width="small"
+        ),
+        "id": st.column_config.Column("ID (from filename)"),
+        "text_original": st.column_config.TextColumn("Original Text / Asıl Metin"),
+        "text_latinized": st.column_config.TextColumn("Latinized / Latin Yazım"),
+        "text_translation_tr": st.column_config.TextColumn("Translation / Çeviri"),
+        "surah_name": st.column_config.TextColumn("Surah / Sûre"),
+        "ayah_number": st.column_config.TextColumn("Ayah / Ayet"),
+        "comment": st.column_config.TextColumn("Comment / Yorum"),
+    },
+    hide_index=True,
+)
 
-            # Quran
-            st.markdown("#### 📖 Quran Details")
-            surah_name = st.text_input(
-                "Surah Name / Sûre Adı",
-                key=f"surah_{idx}",
-                placeholder="Örnek: Fatiha",
-            )
-            ayah_number = st.text_input(
-                "Ayah Number / Ayet No",
-                key=f"ayah_{idx}",
-                placeholder="Örnek: 1-7",
-            )
+col_save, col_download = st.columns([1, 1])
 
-            comment = st.text_area(
-                "Comment / Yorum",
-                key=f"comment_{idx}",
-                placeholder="örnek: Yazı mihrap üzerinde yer almakta.",
-            )
-
-            submitted = st.form_submit_button(
-                "💾 Save & Next",
-                use_container_width=True
-            )
-            delete_btn = st.form_submit_button(
-                "❌ Delete / Uygun Değil",
-                use_container_width=True
-            )
-
-    # Save / Delete Logic
-    if submitted:
-        image_id = os.path.splitext(img_name)[0]
-
-        if image_id not in annotated_ids:
-            entry = {
-                "id": image_id,
-                "image_url": img_url,
-                "text_original": text_original,
-                "text_latinized": text_latinized,
-                "text_translation_tr": text_translation_tr,
-                "surah_name": surah_name,
-                "ayah_number": ayah_number,
-                "comment": comment,
-            }
-            st.session_state.annotations.append(entry)
-
-            backup_and_upload_json(
-                st.session_state.annotations,
-                BUCKET,
-                f"{selected_folder}_annotations",
-                "annotations.json"
-            )
-
-        next_image()
-        st.rerun()
-
-    elif delete_btn:
-        image_id = os.path.splitext(img_name)[0]
-        st.session_state.deleted.append({
-            "id": image_id,
-            "image_url": img_url,
-            "reason": "Not suitable",
-        })
-
+with col_save:
+    if st.button("💾 Save all annotations to Supabase", use_container_width=True):
+        records = edited_df.to_dict(orient="records")
         backup_and_upload_json(
-            st.session_state.deleted,
+            records,
             BUCKET,
-            f"{selected_folder}_annotations",
-            "deleted.json"
+            ann_folder,
+            ann_filename,
         )
+        st.success(f"Saved {len(records)} rows to annotations.json")
 
-        next_image()
-        st.rerun()
-
-# =======================================================================
-# TAB 2 — REVIEW / GRID EDITOR
-# =======================================================================
-with tab_review:
-
-    ann_folder = f"{selected_folder}_annotations"
-    ann_filename = "annotations.json"
-    del_filename = "deleted.json"
-
-    st.markdown("### 📄 Review & Edit (Grid Editor)")
-
-    # Reload buttons
-    colA, colB = st.columns(2)
-    if colA.button("🔄 Reload annotations.json"):
-        st.session_state.annotations = load_existing_annotations(BUCKET, ann_folder, ann_filename)
-        st.rerun()
-    if colB.button("🔄 Reload deleted.json"):
-        st.session_state.deleted = load_existing_annotations(BUCKET, ann_folder, del_filename)
-        st.rerun()
-
-    # Download JSON
-    st.subheader("⬇️ Download JSON")
+with col_download:
     st.download_button(
-        "Download annotations.json",
-        json.dumps(st.session_state.annotations, ensure_ascii=False, indent=2),
+        "⬇️ Download annotations.json",
+        data=json.dumps(edited_df.to_dict(orient="records"), ensure_ascii=False, indent=2),
         file_name="annotations.json",
         mime="application/json",
         use_container_width=True,
     )
-    st.download_button(
-        "Download deleted.json",
-        json.dumps(st.session_state.deleted, ensure_ascii=False, indent=2),
-        file_name="deleted.json",
-        mime="application/json",
-        use_container_width=True,
-    )
-
-    st.divider()
-
-    # Grid Editor for annotations
-    st.subheader("🧾 Annotations grid")
-
-    ann_list = normalize_records(st.session_state.annotations)
-
-    ann_cols = [
-        "id",
-        "image_url",
-        "text_original",
-        "text_latinized",
-        "text_translation_tr",
-        "surah_name",
-        "ayah_number",
-        "comment",
-    ]
-
-    def to_row(d, cols):
-        return {k: d.get(k, "") for k in cols}
-
-    ann_rows = [to_row(r, ann_cols) for r in ann_list]
-
-    ann_df = st.data_editor(
-        ann_rows,
-        key="ann_grid",
-        num_rows="dynamic",
-        use_container_width=True,
-    )
-
-    if st.button("💾 Save grid → annotations.json"):
-        st.session_state.annotations = [dict(row) for row in ann_df]
-        backup_and_upload_json(
-            st.session_state.annotations,
-            BUCKET,
-            ann_folder,
-            ann_filename
-        )
-        st.success("Saved annotations.json")
-
-# =======================================================================
-# TAB 3 — GALLERY (ALL IMAGES + NAMES)
-# =======================================================================
-with tab_gallery:
-    st.markdown("### 📚 Folder Gallery")
-    st.write(f"Total images in **{selected_folder}**: `{len(image_urls)}`")
-
-    n_cols = 4
-    cols = st.columns(n_cols)
-
-    for i, url in enumerate(image_urls):
-        name = os.path.basename(url)
-        col = cols[i % n_cols]
-        with col:
-            st.image(url, use_column_width=True)
-            st.caption(name)
